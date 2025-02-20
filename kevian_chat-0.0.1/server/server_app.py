@@ -4,7 +4,7 @@ import threading
 import sys
 import queue
 
-from client_api import client
+from server_client_handler import client
 from common.definitions import *
 
 from common.message import *
