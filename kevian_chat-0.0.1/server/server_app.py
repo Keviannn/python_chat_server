@@ -4,9 +4,8 @@ import threading
 import sys
 import queue
 
-from server_client_handler import client
+from .server_client_handler import client
 from common.definitions import *
-
 from common.message import *
 
 VERSION = "0.0.1"
@@ -45,41 +44,54 @@ class server_chat:
         with self.list_lock:
             self.clients_online.append(new_client)
 
+        # send transmission data to client
+        new_client.client_socket.send(str(MAX_TRANSMISSION_SIZE).encode("ascii"))
+        if not message.get_ack(new_client.client_socket):
+            pass
+
+        new_client.client_socket.send(TEXT_FORMAT.encode("ascii"))
+
         # sends brief information to client
-        new_client.client_socket.send(self.name)
-        new_client.client_socket.send(VERSION)
+        new_client.client_socket.send(self.name.encode(TEXT_FORMAT))
+        new_client.client_socket.send(VERSION.encode(TEXT_FORMAT))
         
         # sends a welcome message
-        new_client.client_socket.send("Wellcome to the server, please log in or sign in".encode('utf-8'))
+        new_client.client_socket.send("Wellcome to the server, please log in or sign in".encode(TEXT_FORMAT))
 
         # log in or sign in based on the client option
-        option = new_client.client_socket.recv(MAX_TRANSMISSION_SIZE)
+        option = new_client.client_socket.recv(MAX_TRANSMISSION_SIZE).decode(TEXT_FORMAT)
 
         # sets the timeout
         new_client.client_socket.settimeout(60)
 
-        if option == LOG_IN:
-            try:
-                name = client_socket.recv(MAX_TRANSMISSION_SIZE).decode('utf-8')
-                password = client_socket.recv(MAX_TRANSMISSION_SIZE).decode('utf-8')
-            except socket.timeout:
-                new_client.client_socket.close()
-                self.clients_online.remove(new_client)
-                return
-            finally:
-                if new_client.validate_session(name, password):
-                    new_client.client_socket.send(message(message.WARNING_MSG, message.VALID_PASSWD).to_json().encode('utf-8'))
-                    # TODO: rest of client management
-                else:
-                    new_client.client_socket.send(message(message.WARNING_MSG, message.INVALID_PASSWD).to_json().encode('utf-8'))
+        if option == 0: # log in
+            count = 0
+            while count < 3:
+                try:
+                    name = client_socket.recv(MAX_TRANSMISSION_SIZE).decode(TEXT_FORMAT)
+                    password = client_socket.recv(MAX_TRANSMISSION_SIZE).decode(TEXT_FORMAT)
+                except socket.timeout:
+                    new_client.client_socket.send(message(message.ERROR_MSG, message.TIMEOUT_EX).to_json().encode(TEXT_FORMAT))
                     new_client.client_socket.close()
                     self.clients_online.remove(new_client)
                     return
+                finally:
+                    if new_client.validate_session(name, password):
+                        new_client.client_socket.send(message(message.WARNING_MSG, message.VALID_PASSWD).to_json().encode(TEXT_FORMAT))
+                        # TODO: rest of client management
+                    elif count < 2:
+                        new_client.client_socket.send(message(message.WARNING_MSG, message.INVALID_PASSWD).to_json().encode(TEXT_FORMAT))
+                        continue
+                    else:
+                        new_client.client_socket.send(message(message.WARNING_MSG, message.INVALID_PASSWD).to_json().encode(TEXT_FORMAT))
+                        new_client.client_socket.close()
+                        self.clients_online.remove(new_client)
+                        return
 
         '''else:
             try:
-                name = client_socket.recv(MAX_TRANSMISSION_SIZE).decode('utf-8')
-                password = client_socket.recv(MAX_TRANSMISSION_SIZE).decode('utf-8')
+                name = client_socket.recv(MAX_TRANSMISSION_SIZE).decode(TEXT_FORMAT)
+                password = client_socket.recv(MAX_TRANSMISSION_SIZE).decode(TEXT_FORMAT)
             except socket.timeout:
                 new_client.client_socket.close()
                 self.clients_online.remove(new_client)
@@ -89,10 +101,10 @@ class server_chat:
 
         new_client.client_socket.settimeout(None)
         if(new_client.validate_session(name, password)):
-            new_client.client_socket.send("Session validated, wellcome".encode('utf-8'))
+            new_client.client_socket.send("Session validated, wellcome".encode(TEXT_FORMAT))
             # No se como hacer para notificar al usuario que algo ha sido succesful para que continue de alguna forma
         else:
-            new_client.client_socket.send(message(message.WARNING_MSG, message.VALID_PASSWD).to_json().encode('utf-8'))
+            new_client.client_socket.send(message(message.WARNING_MSG, message.VALID_PASSWD).to_json().encode(TEXT_FORMAT))
             new_client.client_socket.close()
             return
             
@@ -144,7 +156,7 @@ class server_chat:
                         server_data = self.set_init_info(server_file)                       # set the server information
 
                 # server values
-                self.name = server_data['name']                             
+                self.name = str(server_data['name'])                        
                 self.ip = server_data['ip']
                 self.port = server_data['port']
 
